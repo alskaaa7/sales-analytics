@@ -69,7 +69,7 @@
     loading, 
     error, 
     fetchData 
-  } = useApi('/api/orders?limit=100&page=1')
+  } = useApi('/api/orders')
   
   const chartCanvas = ref(null)
   let chartInstance = null

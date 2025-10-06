@@ -1,6 +1,7 @@
 // src/composables/useApi.js
 import { ref } from 'vue'
 
+// Базовый URL вашего API
 const API_BASE_URL = 'https://sales-analytics-1yli.vercel.app'
 
 export function useApi(endpoint) {
@@ -15,12 +16,23 @@ export function useApi(endpoint) {
     try {
       console.log('🔄 Запрос к API...')
       
+      // Параметры по умолчанию из вашего эндпоинта
+      const defaultParams = {
+        dateFrom: '',
+        dateTo: '', 
+        page: 1,
+        key: '',
+        limit: 100
+      }
+      
+      // Объединяем параметры
       const queryParams = new URLSearchParams({
-        limit: 100,
+        ...defaultParams,
         ...params
       }).toString()
       
-      const fullUrl = `${API_BASE_URL}/api/${endpoint}?${queryParams}`
+      // Строим полный URL
+      const fullUrl = `${API_BASE_URL}${endpoint}?${queryParams}`
       
       console.log('📡 API URL:', fullUrl)
 
@@ -32,7 +44,7 @@ export function useApi(endpoint) {
       
       const result = await response.json()
       data.value = result
-      console.log('✅ Данные получены:', result.length, 'заказов')
+      console.log('✅ Данные получены:', result)
       
     } catch (err) {
       error.value = err.message
