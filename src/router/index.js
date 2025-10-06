@@ -1,23 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Dashboard from '../views/Dashboard.vue'
-import MetricDetail from '../views/MetricDetail.vue'
-import Analytics from '../views/Analytics.vue' // Добавьте импорт компонента аналитики
 
 const routes = [
   {
     path: '/',
     name: 'Dashboard',
-    component: Dashboard
+    component: () => import('../views/Dashboard.vue')
   },
   {
     path: '/analytics',
-    name: 'Analytics', 
-    component: () => import('../components/Analytics.vue') // путь к вашему компоненту
+    name: 'Analytics',
+    component: () => import('../views/Analytics.vue')
   },
   {
     path: '/metric/:metric',
     name: 'MetricDetail',
-    component: MetricDetail,
+    component: () => import('../views/MetricDetail.vue'),
     props: true
   }
 ]
