@@ -1,67 +1,54 @@
+// src/composables/useApi.js
 import { ref } from 'vue'
 
 export function useApi(endpoint) {
   const data = ref(null)
   const loading = ref(false)
   const error = ref(null)
-  const pagination = ref(null)
 
-  const fetchData = async (filters = {}) => {
+  const fetchData = async (params = {}) => {
     loading.value = true
     error.value = null
-    data.value = null
     
     try {
       console.log('🔄 Запрос к реальному API...')
       
-      // Параметры как в вашем эндпоинте
-      const baseParams = {
-        dateFrom: '',
-        dateTo: '',
-        page: 1,
-        key: '',
-        limit: 100,
-        ...filters
+      // Убираем дублирование /api/ в endpoint
+      let url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+      
+      // Убираем дублирование /api/
+      if (url.startsWith('/api/api/')) {
+        url = url.replace('/api/api/', '/api/')
       }
+      
+      // Добавляем параметры
+      const queryParams = new URLSearchParams(params).toString()
+      const fullUrl = queryParams ? `${url}?${queryParams}` : url
+      
+      console.log('📡 API URL:', fullUrl)
 
-      // Строим URL
-      const queryParams = new URLSearchParams()
-      Object.keys(baseParams).forEach(key => {
-        if (baseParams[key] !== undefined && baseParams[key] !== null && baseParams[key] !== '') {
-          queryParams.append(key, baseParams[key])
-        }
-      })
-
-      const apiUrl = `/api/${endpoint}?${queryParams}`
-      console.log('📡 API URL:', apiUrl)
-
-      const response = await fetch(apiUrl)
+      const response = await fetch(fullUrl)
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
-
-      const result = await response.json()
-      console.log('✅ Ответ от API:', result)
-
-      // Сохраняем данные как есть
-      data.value = result
       
-      pagination.value = {
-        current_page: baseParams.page || 1,
-        last_page: 1,
-        total: Array.isArray(result) ? result.length : 0,
-        per_page: baseParams.limit || 100
-      }
+      const result = await response.json()
+      data.value = result
+      console.log('✅ Данные получены:', result)
       
     } catch (err) {
-      error.value = `Ошибка API: ${err.message}`
+      error.value = err.message
       console.error('❌ Ошибка:', err)
-      // НИКАКИХ ДЕМО-ДАННЫХ - только ошибка
     } finally {
       loading.value = false
     }
   }
 
-  return { data, loading, error, pagination, fetchData }
+  return {
+    data,
+    loading,
+    error,
+    fetchData
+  }
 }
