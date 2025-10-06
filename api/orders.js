@@ -13,11 +13,10 @@ module.exports = async (req, res) => {
   // Реалистичные данные
   const generateOrders = () => {
     const orders = [];
-    const baseDate = new Date();
     const itemsCount = parseInt(limit) || 100;
     
     for (let i = 0; i < itemsCount; i++) {
-      const date = new Date(baseDate);
+      const date = new Date();
       date.setDate(date.getDate() - Math.floor(Math.random() * 30));
       
       const totalPrice = Math.floor(Math.random() * 15000) + 1000;

@@ -1,6 +1,9 @@
 // src/composables/useApi.js
 import { ref } from 'vue'
 
+// Базовый URL - ваш Vercel домен
+const API_BASE_URL = 'https://sales-analytics-1yli.vercel.app'
+
 export function useApi(endpoint) {
   const data = ref(null)
   const loading = ref(false)
@@ -11,19 +14,18 @@ export function useApi(endpoint) {
     error.value = null
     
     try {
-      console.log('🔄 Запрос к реальному API...')
+      console.log('🔄 Запрос к API...')
       
-      // Убираем дублирование /api/ в endpoint
-      let url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+      const queryParams = new URLSearchParams({
+        dateFrom: '',
+        dateTo: '',
+        page: 1,
+        key: '',
+        limit: 100,
+        ...params
+      }).toString()
       
-      // Убираем дублирование /api/
-      if (url.startsWith('/api/api/')) {
-        url = url.replace('/api/api/', '/api/')
-      }
-      
-      // Добавляем параметры
-      const queryParams = new URLSearchParams(params).toString()
-      const fullUrl = queryParams ? `${url}?${queryParams}` : url
+      const fullUrl = `${API_BASE_URL}/api/${endpoint}?${queryParams}`
       
       console.log('📡 API URL:', fullUrl)
 
@@ -34,8 +36,8 @@ export function useApi(endpoint) {
       }
       
       const result = await response.json()
-      data.value = result
-      console.log('✅ Данные получены:', result)
+      data.value = result.data // Извлекаем данные из поля data
+      console.log('✅ Данные получены:', result.data.length, 'заказов')
       
     } catch (err) {
       error.value = err.message
