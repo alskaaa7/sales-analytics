@@ -184,8 +184,7 @@ Chart.register(...registerables)
 const router = useRouter()
 
 // Конфигурация API
-const API_BASE = ''
-const API_ENDPOINT = '/api/proxy'
+const API_BASE = '/api'
 const API_KEY = 'E6kUTYrYwZq2tN4QEtyzsbEBk3ie'
 
 // Данные и состояние
@@ -204,16 +203,46 @@ const filters = ref({
   page: 1
 })
 
-// Получение дат по умолчанию
+// Вспомогательные функции
 function getDefaultDateFrom() {
-  const monthAgo = new Date()
-  monthAgo.setDate(monthAgo.getDate() - 30)
-  return monthAgo.toISOString().split('T')[0]
+  const date = new Date()
+  date.setMonth(date.getMonth() - 1)
+  return date.toISOString().split('T')[0]
 }
 
 function getDefaultDateTo() {
-  const today = new Date()
-  return today.toISOString().split('T')[0]
+  return new Date().toISOString().split('T')[0]
+}
+
+function formatDate(dateString) {
+  try {
+    if (dateString && dateString.includes(' ')) {
+      return dateString.split(' ')[0]
+    }
+    const date = new Date(dateString)
+    return date.toISOString().split('T')[0]
+  } catch {
+    return dateString
+  }
+}
+
+function formatDisplayDate(dateString) {
+  try {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
+  } catch {
+    return dateString
+  }
+}
+
+function getLast7Days() {
+  const dates = []
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    dates.push(date.toISOString().split('T')[0])
+  }
+  return dates
 }
 
 // Основные метрики
@@ -251,25 +280,6 @@ const activeOrders = computed(() => {
 const canceledOrders = computed(() => {
   return ordersData.value.filter(item => item.is_cancel).length
 })
-
-const chartStats = computed(() => [
-  {
-    label: 'Общая сумма:',
-    value: Math.round(totalOrdersValue.value).toLocaleString() + ' ₽'
-  },
-  {
-    label: 'Активных:',
-    value: activeOrders.value + ' шт.'
-  },
-  {
-    label: 'Отменено:',
-    value: canceledOrders.value + ' шт.'
-  },
-  {
-    label: 'Средняя скидка:',
-    value: getAverageDiscount().toFixed(1) + '%'
-  }
-])
 
 // Данные для мини-графиков
 const summaryCharts = computed(() => [
@@ -315,7 +325,35 @@ const summaryCharts = computed(() => [
   }
 ])
 
-// Функции для расчета трендов
+const chartStats = computed(() => [
+  {
+    label: 'Общая сумма:',
+    value: Math.round(totalOrdersValue.value).toLocaleString() + ' ₽'
+  },
+  {
+    label: 'Активных:',
+    value: activeOrders.value + ' шт.'
+  },
+  {
+    label: 'Отменено:',
+    value: canceledOrders.value + ' шт.'
+  },
+  {
+    label: 'Средняя скидка:',
+    value: getAverageDiscount().toFixed(1) + '%'
+  }
+])
+
+function getAverageDiscount() {
+  const ordersWithDiscount = ordersData.value.filter(item => item.discount_percent)
+  if (ordersWithDiscount.length === 0) return 0
+  
+  const totalDiscount = ordersWithDiscount.reduce((sum, item) => 
+    sum + (parseFloat(item.discount_percent) || 0), 0)
+  
+  return totalDiscount / ordersWithDiscount.length
+}
+
 function getTrendText(type) {
   const trends = {
     'sales': '+12% за период',
@@ -326,7 +364,7 @@ function getTrendText(type) {
   return trends[type] || 'Нет данных'
 }
 
-// Функции для получения данных графиков
+// Функции для получения данных графиков из реальных данных
 function getSalesVolumeData() {
   const ordersByDate = ordersData.value.reduce((acc, item) => {
     if (item.date) {
@@ -337,23 +375,44 @@ function getSalesVolumeData() {
   }, {})
 
   const sortedDates = Object.keys(ordersByDate).sort()
-  const last7Dates = sortedDates.slice(-7)
+  const displayDates = sortedDates.slice(-7)
   
+  if (displayDates.length < 7) {
+    const last7Days = getLast7Days()
+    return {
+      labels: last7Days.map(date => formatDisplayDate(date)),
+      datasets: [{
+        label: 'Количество заказов',
+        data: last7Days.map(date => ordersByDate[date] || 0),
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 1,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      }]
+    }
+  }
+
   return {
-    labels: last7Dates.map(date => formatDisplayDate(date)),
+    labels: displayDates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Количество заказов',
-      data: last7Dates.map(date => ordersByDate[date]),
+      data: displayDates.map(date => ordersByDate[date]),
       borderColor: '#10b981',
       backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      borderWidth: 3,
-      tension: 0.3,
+      borderWidth: 2,
+      tension: 0.4,
       fill: true,
       pointBackgroundColor: '#10b981',
       pointBorderColor: '#ffffff',
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6
+      pointBorderWidth: 1,
+      pointRadius: 3,
+      pointHoverRadius: 5
     }]
   }
 }
@@ -362,29 +421,51 @@ function getRevenueData() {
   const revenueByDate = ordersData.value.reduce((acc, item) => {
     if (item.date && item.total_price) {
       const date = formatDate(item.date)
-      acc[date] = (acc[date] || 0) + (parseFloat(item.total_price) || 0)
+      const revenue = parseFloat(item.total_price) || 0
+      acc[date] = (acc[date] || 0) + revenue
     }
     return acc
   }, {})
 
   const sortedDates = Object.keys(revenueByDate).sort()
-  const last7Dates = sortedDates.slice(-7)
+  const displayDates = sortedDates.slice(-7)
   
+  if (displayDates.length < 7) {
+    const last7Days = getLast7Days()
+    return {
+      labels: last7Days.map(date => formatDisplayDate(date)),
+      datasets: [{
+        label: 'Выручка',
+        data: last7Days.map(date => revenueByDate[date] || 0),
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: '#3b82f6',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 1,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      }]
+    }
+  }
+
   return {
-    labels: last7Dates.map(date => formatDisplayDate(date)),
+    labels: displayDates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Выручка',
-      data: last7Dates.map(date => revenueByDate[date]),
+      data: displayDates.map(date => revenueByDate[date]),
       borderColor: '#3b82f6',
       backgroundColor: 'rgba(59, 130, 246, 0.1)',
-      borderWidth: 3,
-      tension: 0.3,
+      borderWidth: 2,
+      tension: 0.4,
       fill: true,
       pointBackgroundColor: '#3b82f6',
       pointBorderColor: '#ffffff',
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6
+      pointBorderWidth: 1,
+      pointRadius: 3,
+      pointHoverRadius: 5
     }]
   }
 }
@@ -399,23 +480,44 @@ function getCancellationsData() {
   }, {})
 
   const sortedDates = Object.keys(cancellationsByDate).sort()
-  const last7Dates = sortedDates.slice(-7)
+  const displayDates = sortedDates.slice(-7)
   
+  if (displayDates.length < 7) {
+    const last7Days = getLast7Days()
+    return {
+      labels: last7Days.map(date => formatDisplayDate(date)),
+      datasets: [{
+        label: 'Отмены',
+        data: last7Days.map(date => cancellationsByDate[date] || 0),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: '#ef4444',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 1,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      }]
+    }
+  }
+
   return {
-    labels: last7Dates.map(date => formatDisplayDate(date)),
+    labels: displayDates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Отмены',
-      data: last7Dates.map(date => cancellationsByDate[date]),
+      data: displayDates.map(date => cancellationsByDate[date]),
       borderColor: '#ef4444',
       backgroundColor: 'rgba(239, 68, 68, 0.1)',
-      borderWidth: 3,
-      tension: 0.3,
+      borderWidth: 2,
+      tension: 0.4,
       fill: true,
       pointBackgroundColor: '#ef4444',
       pointBorderColor: '#ffffff',
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6
+      pointBorderWidth: 1,
+      pointRadius: 3,
+      pointHoverRadius: 5
     }]
   }
 }
@@ -424,61 +526,60 @@ function getDiscountsData() {
   const discountsByDate = ordersData.value.reduce((acc, item) => {
     if (item.date && item.discount_percent) {
       const date = formatDate(item.date)
+      const discount = parseFloat(item.discount_percent) || 0
       if (!acc[date]) acc[date] = { sum: 0, count: 0 }
-      acc[date].sum += parseFloat(item.discount_percent) || 0
+      acc[date].sum += discount
       acc[date].count += 1
     }
     return acc
   }, {})
 
   const sortedDates = Object.keys(discountsByDate).sort()
-  const last7Dates = sortedDates.slice(-7)
+  const displayDates = sortedDates.slice(-7)
   
+  if (displayDates.length < 7) {
+    const last7Days = getLast7Days()
+    return {
+      labels: last7Days.map(date => formatDisplayDate(date)),
+      datasets: [{
+        label: 'Средняя скидка',
+        data: last7Days.map(date => 
+          discountsByDate[date] && discountsByDate[date].count > 0 ? 
+          (discountsByDate[date].sum / discountsByDate[date].count) : 0
+        ),
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: '#f59e0b',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 1,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      }]
+    }
+  }
+
   return {
-    labels: last7Dates.map(date => formatDisplayDate(date)),
+    labels: displayDates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Средняя скидка',
-      data: last7Dates.map(date => discountsByDate[date].count > 0 ? 
-        (discountsByDate[date].sum / discountsByDate[date].count) : 0),
+      data: displayDates.map(date => 
+        discountsByDate[date].count > 0 ? 
+        (discountsByDate[date].sum / discountsByDate[date].count) : 0
+      ),
       borderColor: '#f59e0b',
       backgroundColor: 'rgba(245, 158, 11, 0.1)',
-      borderWidth: 3,
-      tension: 0.3,
+      borderWidth: 2,
+      tension: 0.4,
       fill: true,
       pointBackgroundColor: '#f59e0b',
       pointBorderColor: '#ffffff',
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6
+      pointBorderWidth: 1,
+      pointRadius: 3,
+      pointHoverRadius: 5
     }]
-  }
-}
-
-function getAverageDiscount() {
-  const ordersWithDiscount = ordersData.value.filter(item => item.discount_percent)
-  if (ordersWithDiscount.length === 0) return 0
-  
-  const totalDiscount = ordersWithDiscount.reduce((sum, item) => 
-    sum + (parseFloat(item.discount_percent) || 0), 0)
-  
-  return totalDiscount / ordersWithDiscount.length
-}
-
-function formatDate(dateString) {
-  try {
-    const date = new Date(dateString)
-    return date.toISOString().split('T')[0]
-  } catch {
-    return dateString
-  }
-}
-
-function formatDisplayDate(dateString) {
-  try {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
-  } catch {
-    return dateString
   }
 }
 
@@ -491,9 +592,13 @@ const setChartRef = (chartId, el) => {
 
 // Инициализация мини-графиков
 const initMiniCharts = async () => {
-  if (ordersData.value.length === 0) return
+  if (ordersData.value.length === 0) {
+    console.log('⚠️ Нет данных для графиков')
+    return
+  }
 
   chartLoading.value = true
+  console.log('🔄 Инициализация мини-графиков...')
 
   await nextTick()
 
@@ -507,70 +612,91 @@ const initMiniCharts = async () => {
   // Создаем новые графики
   summaryCharts.value.forEach(chart => {
     const canvas = chartInstances.value[chart.id]
-    if (!canvas || !chart.data.labels.length) return
+    if (!canvas) {
+      console.warn(`⚠️ Canvas не найден для графика: ${chart.id}`)
+      return
+    }
+
+    if (!chart.data.labels.length || !chart.data.datasets[0].data.length) {
+      console.warn(`⚠️ Нет данных для графика: ${chart.id}`)
+      return
+    }
 
     const ctx = canvas.getContext('2d')
     
-    const chartInstance = new Chart(ctx, {
-      type: 'line',
-      data: chart.data,
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: {
-          duration: 1000,
-          easing: 'easeOutQuart'
-        },
-        plugins: {
-          legend: {
-            display: false
+    try {
+      const chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: chart.data,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: {
+            duration: 1000,
+            easing: 'easeOutQuart'
           },
-          tooltip: {
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            padding: 12,
-            cornerRadius: 8,
-            borderColor: chart.data.datasets[0].borderColor,
-            borderWidth: 1,
-            titleColor: '#e2e8f0',
-            bodyColor: '#cbd5e1',
-            callbacks: {
-              label: function(context) {
-                const label = context.dataset.label || '';
-                const value = context.parsed.y.toLocaleString();
-                if (label.includes('Выручка')) {
-                  return `${label}: ${value} ₽`;
-                } else if (label.includes('скидка')) {
-                  return `${label}: ${value}%`;
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              enabled: true,
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              padding: 12,
+              cornerRadius: 8,
+              borderColor: chart.data.datasets[0].borderColor,
+              borderWidth: 1,
+              titleColor: '#e2e8f0',
+              bodyColor: '#cbd5e1',
+              callbacks: {
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.parsed.y.toLocaleString();
+                  if (label.includes('Выручка')) {
+                    return `${label}: ${value} ₽`;
+                  } else if (label.includes('скидка')) {
+                    return `${label}: ${value}%`;
+                  }
+                  return `${label}: ${value} шт.`;
                 }
-                return `${label}: ${value} шт.`;
               }
             }
-          }
-        },
-        scales: {
-          y: {
-            display: false
           },
-          x: {
-            display: false
+          scales: {
+            y: {
+              display: false,
+              beginAtZero: true
+            },
+            x: {
+              display: false
+            }
+          },
+          elements: {
+            point: {
+              radius: 2,
+              hoverRadius: 4
+            },
+            line: {
+              tension: 0.4
+            }
+          },
+          interaction: {
+            intersect: false,
+            mode: 'index'
           }
-        },
-        elements: {
-          point: {
-            radius: 0
-          }
-        },
-        interaction: {
-          intersect: false,
-          mode: 'index'
         }
-      }
-    })
-    
-    canvas._chart = chartInstance
+      })
+      
+      canvas._chart = chartInstance
+      console.log(`✅ График ${chart.id} создан успешно`)
+      
+    } catch (error) {
+      console.error(`❌ Ошибка создания графика ${chart.id}:`, error)
+    }
   })
 
   chartLoading.value = false
+  console.log('✅ Все мини-графики инициализированы')
 }
 
 // Навигация к детальному графику
@@ -583,7 +709,7 @@ const refreshData = () => {
   fetchData()
 }
 
-// Загрузка данных через прокси
+// Загрузка данных через API
 const fetchData = async () => {
   loading.value = true
   error.value = null
@@ -591,15 +717,15 @@ const fetchData = async () => {
   try {
     const params = new URLSearchParams()
     
-    params.append('endpoint', 'orders')
+    // Параметры для запроса к API
     params.append('key', API_KEY)
     params.append('limit', filters.value.limit.toString())
     params.append('page', filters.value.page.toString())
     params.append('dateFrom', filters.value.dateFrom)
     params.append('dateTo', filters.value.dateTo)
 
-    const apiUrl = `${API_BASE}${API_ENDPOINT}?${params}`
-    console.log('📡 Запрос к прокси:', apiUrl)
+    const apiUrl = `${API_BASE}/orders?${params}`
+    console.log('📡 Запрос к API:', apiUrl)
 
     const response = await fetch(apiUrl)
     
@@ -631,14 +757,17 @@ const fetchData = async () => {
   } finally {
     loading.value = false
   }
+  
+  await nextTick()
+  setTimeout(() => {
+    initMiniCharts()
+  }, 1000)
 }
 
-// Обработчик смены страницы
-const handlePageChange = (newPage) => {
-  if (newPage >= 1 && newPage <= pagination.value.last_page) {
-    filters.value.page = newPage
-    fetchData()
-  }
+// Пагинация
+const handlePageChange = (page) => {
+  filters.value.page = page
+  fetchData()
 }
 
 // Прокрутка к верху
