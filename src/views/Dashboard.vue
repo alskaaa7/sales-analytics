@@ -2,7 +2,7 @@
   <div class="page dark-theme">
     <h1 class="page-title">📊 Аналитика продаж</h1>
     
-    <!-- Фильтры -->
+    <!-- Фильтры в стиле вашего дизайна -->
     <div class="filters-section">
       <div class="filter-group">
         <label>Дата с:</label>
@@ -70,40 +70,62 @@
       </div>
     </transition-group>
 
-    <!-- Сводные графики -->
-    <div class="dashboard-section" v-if="ordersData.length > 0">
-      <h2 class="dashboard-title">
-        <span class="icon">📈</span>
-        Ключевые показатели
-      </h2>
-      
-      <div class="charts-grid">
-        <div 
-          v-for="chart in summaryCharts" 
-          :key="chart.id"
-          class="chart-card"
-          @click="navigateToChart(chart.id)"
-        >
-          <div class="chart-header">
-            <h3>{{ chart.title }}</h3>
-            <span class="chart-icon">{{ chart.icon }}</span>
+    <!-- Сводные графики с красивым дизайном -->
+    <transition name="chart-scale" mode="out-in">
+      <div class="charts-section" v-if="ordersData.length > 0" key="charts">
+        <div class="charts-header">
+          <h2>
+            <span class="icon">📈</span>
+            Ключевые показатели
+          </h2>
+          <div class="chart-actions">
+            <button @click="refreshData" class="chart-btn">
+              <span class="btn-icon">🔄</span>
+              Обновить
+            </button>
           </div>
-          <div class="chart-mini">
-            <canvas :ref="el => setChartRef(chart.id, el)" class="chart-canvas-mini"></canvas>
-          </div>
-          <div class="chart-footer">
-            <div class="chart-value">{{ chart.value }}</div>
-            <div class="chart-trend" :class="chart.trendClass">
-              <span class="trend-icon">{{ chart.trendIcon }}</span>
-              <span class="trend-text">{{ chart.trendText }}</span>
+        </div>
+        
+        <div class="charts-grid">
+          <div 
+            v-for="chart in summaryCharts" 
+            :key="chart.id"
+            class="chart-card"
+            @click="navigateToChart(chart.id)"
+          >
+            <div class="chart-header">
+              <h3>{{ chart.title }}</h3>
+              <span class="chart-icon">{{ chart.icon }}</span>
             </div>
+            <div class="chart-mini">
+              <canvas :ref="el => setChartRef(chart.id, el)" class="chart-canvas-mini"></canvas>
+              <div class="chart-loading-mini" v-if="chartLoading">
+                <div class="loading-spinner-mini"></div>
+              </div>
+            </div>
+            <div class="chart-footer">
+              <div class="chart-value">{{ chart.value }}</div>
+              <div class="chart-trend" :class="chart.trendClass">
+                <span class="trend-icon">{{ chart.trendIcon }}</span>
+                <span class="trend-text">{{ chart.trendText }}</span>
+              </div>
+            </div>
+            <div class="chart-overlay">
+              <span>Подробнее →</span>
+            </div>
+            <div class="chart-progress"></div>
+            <div class="chart-glow"></div>
           </div>
-          <div class="chart-overlay">
-            <span>Подробнее →</span>
+        </div>
+
+        <div class="chart-stats">
+          <div class="chart-stat-item" v-for="stat in chartStats" :key="stat.label">
+            <span class="stat-label">{{ stat.label }}</span>
+            <span class="stat-value">{{ stat.value }}</span>
           </div>
         </div>
       </div>
-    </div>
+    </transition>
 
     <!-- Кнопка возврата наверх -->
     <transition name="zoom">
@@ -135,7 +157,7 @@ Chart.register(...registerables)
 
 const router = useRouter()
 
-// Конфигурация API - используем абсолютный URL чтобы избежать дублирования
+// Конфигурация API
 const API_BASE = 'https://sales-analytics-1yli.vercel.app'
 const API_ENDPOINT = '/api/orders'
 
@@ -144,6 +166,7 @@ const ordersData = ref([])
 const loading = ref(false)
 const error = ref(null)
 const showFab = ref(false)
+const chartLoading = ref(false)
 const chartInstances = ref({})
 
 const filters = ref({
@@ -201,6 +224,25 @@ const activeOrders = computed(() => {
 const canceledOrders = computed(() => {
   return ordersData.value.filter(item => item.is_cancel === true || item.is_cancel === 'true').length
 })
+
+const chartStats = computed(() => [
+  {
+    label: 'Общая сумма:',
+    value: Math.round(totalOrdersValue.value).toLocaleString() + ' ₽'
+  },
+  {
+    label: 'Активных заказов:',
+    value: activeOrders.value + ' шт.'
+  },
+  {
+    label: 'Отменено:',
+    value: canceledOrders.value + ' шт.'
+  },
+  {
+    label: 'Средняя скидка:',
+    value: getAverageDiscount().toFixed(1) + '%'
+  }
+])
 
 // Данные для мини-графиков
 const summaryCharts = computed(() => [
@@ -268,18 +310,23 @@ function getSalesVolumeData() {
   }, {})
 
   const sortedDates = Object.keys(ordersByDate).sort()
-  const last7Dates = sortedDates.slice(-7) // Берем последние 7 дней для мини-графика
+  const last7Dates = sortedDates.slice(-7)
   
   return {
-    labels: last7Dates,
+    labels: last7Dates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Количество заказов',
       data: last7Dates.map(date => ordersByDate[date]),
       borderColor: '#10b981',
       backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      borderWidth: 2,
+      borderWidth: 3,
       tension: 0.3,
-      fill: true
+      fill: true,
+      pointBackgroundColor: '#10b981',
+      pointBorderColor: '#ffffff',
+      pointBorderWidth: 2,
+      pointRadius: 4,
+      pointHoverRadius: 6
     }]
   }
 }
@@ -297,15 +344,20 @@ function getRevenueData() {
   const last7Dates = sortedDates.slice(-7)
   
   return {
-    labels: last7Dates,
+    labels: last7Dates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Выручка',
       data: last7Dates.map(date => revenueByDate[date]),
       borderColor: '#3b82f6',
       backgroundColor: 'rgba(59, 130, 246, 0.1)',
-      borderWidth: 2,
+      borderWidth: 3,
       tension: 0.3,
-      fill: true
+      fill: true,
+      pointBackgroundColor: '#3b82f6',
+      pointBorderColor: '#ffffff',
+      pointBorderWidth: 2,
+      pointRadius: 4,
+      pointHoverRadius: 6
     }]
   }
 }
@@ -323,15 +375,20 @@ function getCancellationsData() {
   const last7Dates = sortedDates.slice(-7)
   
   return {
-    labels: last7Dates,
+    labels: last7Dates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Отмены',
       data: last7Dates.map(date => cancellationsByDate[date]),
       borderColor: '#ef4444',
       backgroundColor: 'rgba(239, 68, 68, 0.1)',
-      borderWidth: 2,
+      borderWidth: 3,
       tension: 0.3,
-      fill: true
+      fill: true,
+      pointBackgroundColor: '#ef4444',
+      pointBorderColor: '#ffffff',
+      pointBorderWidth: 2,
+      pointRadius: 4,
+      pointHoverRadius: 6
     }]
   }
 }
@@ -351,16 +408,21 @@ function getDiscountsData() {
   const last7Dates = sortedDates.slice(-7)
   
   return {
-    labels: last7Dates,
+    labels: last7Dates.map(date => formatDisplayDate(date)),
     datasets: [{
       label: 'Средняя скидка',
       data: last7Dates.map(date => discountsByDate[date].count > 0 ? 
         (discountsByDate[date].sum / discountsByDate[date].count) : 0),
       borderColor: '#f59e0b',
       backgroundColor: 'rgba(245, 158, 11, 0.1)',
-      borderWidth: 2,
+      borderWidth: 3,
       tension: 0.3,
-      fill: true
+      fill: true,
+      pointBackgroundColor: '#f59e0b',
+      pointBorderColor: '#ffffff',
+      pointBorderWidth: 2,
+      pointRadius: 4,
+      pointHoverRadius: 6
     }]
   }
 }
@@ -384,6 +446,15 @@ function formatDate(dateString) {
   }
 }
 
+function formatDisplayDate(dateString) {
+  try {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
+  } catch {
+    return dateString
+  }
+}
+
 // Управление ссылками на графики
 const setChartRef = (chartId, el) => {
   if (el) {
@@ -394,6 +465,8 @@ const setChartRef = (chartId, el) => {
 // Инициализация мини-графиков
 const initMiniCharts = async () => {
   if (ordersData.value.length === 0) return
+
+  chartLoading.value = true
 
   await nextTick()
 
@@ -417,19 +490,41 @@ const initMiniCharts = async () => {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: {
+          duration: 1000,
+          easing: 'easeOutQuart'
+        },
         plugins: {
           legend: {
             display: false
           },
           tooltip: {
-            enabled: false
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            padding: 12,
+            cornerRadius: 8,
+            borderColor: chart.data.datasets[0].borderColor,
+            borderWidth: 1,
+            titleColor: '#e2e8f0',
+            bodyColor: '#cbd5e1',
+            callbacks: {
+              label: function(context) {
+                const label = context.dataset.label || '';
+                const value = context.parsed.y.toLocaleString();
+                if (label.includes('Выручка')) {
+                  return `${label}: ${value} ₽`;
+                } else if (label.includes('скидка')) {
+                  return `${label}: ${value}%`;
+                }
+                return `${label}: ${value} шт.`;
+              }
+            }
           }
         },
         scales: {
-          x: {
+          y: {
             display: false
           },
-          y: {
+          x: {
             display: false
           }
         },
@@ -439,7 +534,8 @@ const initMiniCharts = async () => {
           }
         },
         interaction: {
-          intersect: false
+          intersect: false,
+          mode: 'index'
         }
       }
     })
@@ -447,11 +543,18 @@ const initMiniCharts = async () => {
     // Сохраняем ссылку на экземпляр chart
     canvas._chart = chartInstance
   })
+
+  chartLoading.value = false
 }
 
 // Навигация к детальному графику
 const navigateToChart = (chartId) => {
   router.push(`/chart/${chartId}`)
+}
+
+// Обновление данных
+const refreshData = () => {
+  fetchData()
 }
 
 // Загрузка данных
@@ -462,7 +565,6 @@ const fetchData = async () => {
   try {
     const params = new URLSearchParams()
     
-    // Добавляем только заполненные параметры
     if (filters.value.dateFrom) params.append('dateFrom', filters.value.dateFrom)
     if (filters.value.dateTo) params.append('dateTo', filters.value.dateTo)
     params.append('page', filters.value.page.toString())
@@ -472,7 +574,6 @@ const fetchData = async () => {
       params.append('key', filters.value.key)
     }
 
-    // Используем абсолютный URL чтобы избежать дублирования
     const apiUrl = `${API_BASE}${API_ENDPOINT}?${params}`
     console.log('📡 Запрос к API:', apiUrl)
 
@@ -495,7 +596,6 @@ const fetchData = async () => {
     } else if (data && Array.isArray(data.results)) {
       ordersData.value = data.results
     } else if (typeof data === 'object') {
-      // Пробуем преобразовать объект в массив
       ordersData.value = Object.values(data).filter(item => typeof item === 'object')
     } else {
       ordersData.value = []
@@ -541,7 +641,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Уничтожаем все графики при размонтировании
   Object.values(chartInstances.value).forEach(canvas => {
     if (canvas && canvas._chart) {
       canvas._chart.destroy()
@@ -564,92 +663,234 @@ watch(ordersData, () => {
 </script>
 
 <style scoped>
-/.chart-detail-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+/* Все стили из вашего оригинального файла сохраняются */
+/* Добавляем только специфические стили для главной страницы аналитики */
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
   margin-bottom: 2rem;
 }
 
-.back-btn {
-  padding: 0.75rem 1.5rem;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  background: rgba(15, 23, 42, 0.8);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: 500;
-  color: #e2e8f0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  backdrop-filter: blur(10px);
-}
-
-.back-btn:hover {
-  border-color: #ec4899;
-  background: rgba(239, 68, 68, 0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3);
-}
-
-.chart-detail-container {
+.chart-card {
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
-  padding: 2rem;
-  border-radius: 20px;
+  padding: 1.5rem;
+  border-radius: 16px;
   box-shadow: 
-    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 8px 32px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid rgba(239, 68, 68, 0.2);
   backdrop-filter: blur(10px);
+  cursor: pointer;
 }
 
-.chart-full {
-  height: 500px;
-  margin-bottom: 2rem;
+.chart-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 
+    0 20px 40px rgba(239, 68, 68, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
 }
 
-.chart-canvas-full {
+.chart-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.1), transparent);
+  transition: left 0.6s ease;
+}
+
+.chart-card:hover::before {
+  left: 100%;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.chart-header h3 {
+  margin: 0;
+  color: #f1f5f9;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.chart-icon {
+  font-size: 1.5rem;
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
+}
+
+.chart-mini {
+  height: 120px;
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+.chart-canvas-mini {
   width: 100%;
   height: 100%;
 }
 
-.chart-detail-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
+.chart-loading-mini {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  backdrop-filter: blur(5px);
 }
 
-.detail-stat {
-  background: rgba(15, 23, 42, 0.6);
-  padding: 1.5rem;
-  border-radius: 12px;
-  text-align: center;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  transition: all 0.3s ease;
+.loading-spinner-mini {
+  width: 30px;
+  height: 30px;
+  border: 2px solid rgba(239, 68, 68, 0.3);
+  border-top: 2px solid #ec4899;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
 }
 
-.detail-stat:hover {
-  transform: translateY(-5px);
-  border-color: rgba(239, 68, 68, 0.5);
-  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.2);
+.chart-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.detail-stat-value {
-  font-size: 1.8rem;
+.chart-value {
+  font-size: 1.5rem;
   font-weight: 700;
   color: #f1f5f9;
-  margin-bottom: 0.5rem;
   font-family: 'JetBrains Mono', monospace;
 }
 
-.detail-stat-label {
-  color: #94a3b8;
-  font-size: 0.9rem;
+.chart-trend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
-/* Остальные стили такие же как в предыдущем ответе */
+.trend-up {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.trend-down {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.trend-neutral {
+  background: rgba(156, 163, 175, 0.2);
+  color: #9ca3af;
+  border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+.chart-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  backdrop-filter: blur(5px);
+  border-radius: 16px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.chart-card:hover .chart-overlay {
+  opacity: 1;
+}
+
+.chart-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #e86aa9, #f15299, #be185d);
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: progressFill 1.5s ease-out 0.5s forwards;
+}
+
+.chart-glow {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(135deg, #e86aa9, #f15299, #be185d);
+  border-radius: 18px;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.chart-card:hover .chart-glow {
+  opacity: 0.3;
+}
+
+.loading-message {
+  padding: 1.5rem;
+  border-radius: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  backdrop-filter: blur(10px);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #ddd6fe;
+}
+
+.error-message, .no-data-message {
+  padding: 1.5rem;
+  border-radius: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  backdrop-filter: blur(10px);
+}
+
+.error-message {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.2) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fecaca;
+}
+
+.no-data-message {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(30, 64, 175, 0.2) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #bae6fd;
+}
+
+/* Остальные стили такие же как в вашем оригинальном файле */
 </style>
