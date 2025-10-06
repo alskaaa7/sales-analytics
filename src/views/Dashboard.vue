@@ -2,7 +2,7 @@
   <div class="page dark-theme">
     <h1 class="page-title">📊 Аналитика продаж</h1>
     
-    <!-- Фильтры в стиле вашего дизайна -->
+    <!-- Фильтры -->
     <div class="filters-section">
       <div class="filter-group">
         <label>Дата с:</label>
@@ -19,16 +19,6 @@
           type="date" 
           v-model="filters.dateTo"
           @change="fetchData"
-          class="animated-input"
-        >
-      </div>
-      <div class="filter-group">
-        <label>API ключ:</label>
-        <input 
-          type="text" 
-          v-model="filters.key"
-          @input="handleFilterChange"
-          placeholder="Введите API ключ"
           class="animated-input"
         >
       </div>
@@ -70,7 +60,7 @@
       </div>
     </transition-group>
 
-    <!-- Сводные графики с красивым дизайном -->
+    <!-- Сводные графики -->
     <transition name="chart-scale" mode="out-in">
       <div class="charts-section" v-if="ordersData.length > 0" key="charts">
         <div class="charts-header">
@@ -157,9 +147,10 @@ Chart.register(...registerables)
 
 const router = useRouter()
 
-// Конфигурация API
+// Конфигурация API с вашим ключом
 const API_BASE = 'https://sales-analytics-1yli.vercel.app'
-const API_ENDPOINT = '/api/orders'
+const API_ENDPOINT = '/api/proxy'
+const API_KEY = 'E6kUTYrYwZq2tN4QEtyzsbEBk3ie' // Ваш ключ
 
 // Данные и состояние
 const ordersData = ref([])
@@ -172,7 +163,6 @@ const chartInstances = ref({})
 const filters = ref({
   dateFrom: getDefaultDateFrom(),
   dateTo: getDefaultDateTo(),
-  key: '',
   limit: 100,
   page: 1
 })
@@ -557,7 +547,7 @@ const refreshData = () => {
   fetchData()
 }
 
-// Загрузка данных
+// Загрузка данных через прокси
 const fetchData = async () => {
   loading.value = true
   error.value = null
@@ -565,13 +555,17 @@ const fetchData = async () => {
   try {
     const params = new URLSearchParams()
     
-    if (filters.value.dateFrom) params.append('dateFrom', filters.value.dateFrom)
-    if (filters.value.dateTo) params.append('dateTo', filters.value.dateTo)
-    params.append('page', filters.value.page.toString())
+    // Параметры для прокси
+    params.append('endpoint', 'orders')
+    params.append('key', API_KEY) // Используем ваш ключ
     params.append('limit', filters.value.limit.toString())
+    params.append('page', filters.value.page.toString())
     
-    if (filters.value.key) {
-      params.append('key', filters.value.key)
+    if (filters.value.dateFrom) {
+      params.append('dateFrom', filters.value.dateFrom)
+    }
+    if (filters.value.dateTo) {
+      params.append('dateTo', filters.value.dateTo)
     }
 
     const apiUrl = `${API_BASE}${API_ENDPOINT}?${params}`
@@ -663,234 +657,89 @@ watch(ordersData, () => {
 </script>
 
 <style scoped>
-/* Все стили из вашего оригинального файла сохраняются */
-/* Добавляем только специфические стили для главной страницы аналитики */
-
-.charts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
+.chart-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   margin-bottom: 2rem;
 }
 
-.chart-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
-  padding: 1.5rem;
-  border-radius: 16px;
-  box-shadow: 
-    0 8px 32px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  position: relative;
-  overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  backdrop-filter: blur(10px);
+.back-btn {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 12px;
   cursor: pointer;
-}
-
-.chart-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 
-    0 20px 40px rgba(239, 68, 68, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  border-color: rgba(239, 68, 68, 0.5);
-}
-
-.chart-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.1), transparent);
-  transition: left 0.6s ease;
-}
-
-.chart-card:hover::before {
-  left: 100%;
-}
-
-.chart-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.chart-header h3 {
-  margin: 0;
-  color: #f1f5f9;
-  font-size: 1.2rem;
-  font-weight: 600;
-}
-
-.chart-icon {
-  font-size: 1.5rem;
-  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
-}
-
-.chart-mini {
-  height: 120px;
-  margin-bottom: 1rem;
-  position: relative;
-}
-
-.chart-canvas-mini {
-  width: 100%;
-  height: 100%;
-}
-
-.chart-loading-mini {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(15, 23, 42, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  backdrop-filter: blur(5px);
-}
-
-.loading-spinner-mini {
-  width: 30px;
-  height: 30px;
-  border: 2px solid rgba(239, 68, 68, 0.3);
-  border-top: 2px solid #ec4899;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
-}
-
-.chart-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.chart-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #f1f5f9;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.chart-trend {
+  transition: all 0.3s ease;
+  font-weight: 500;
+  color: #e2e8f0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  backdrop-filter: blur(10px);
 }
 
-.trend-up {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.trend-down {
+.back-btn:hover {
+  border-color: #ec4899;
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3);
 }
 
-.trend-neutral {
-  background: rgba(156, 163, 175, 0.2);
-  color: #9ca3af;
-  border: 1px solid rgba(156, 163, 175, 0.3);
+.chart-detail-container {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  backdrop-filter: blur(10px);
 }
 
-.chart-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(15, 23, 42, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  backdrop-filter: blur(5px);
-  border-radius: 16px;
-  font-weight: 600;
-  color: #e2e8f0;
+.chart-full {
+  height: 500px;
+  margin-bottom: 2rem;
 }
 
-.chart-card:hover .chart-overlay {
-  opacity: 1;
-}
-
-.chart-progress {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #e86aa9, #f15299, #be185d);
+.chart-canvas-full {
   width: 100%;
-  transform: scaleX(0);
-  transform-origin: left;
-  animation: progressFill 1.5s ease-out 0.5s forwards;
+  height: 100%;
 }
 
-.chart-glow {
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  background: linear-gradient(135deg, #e86aa9, #f15299, #be185d);
-  border-radius: 18px;
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.4s ease;
+.chart-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
 }
 
-.chart-card:hover .chart-glow {
-  opacity: 0.3;
-}
-
-.loading-message {
+.detail-stat {
+  background: rgba(15, 23, 42, 0.6);
   padding: 1.5rem;
   border-radius: 12px;
+  text-align: center;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  transition: all 0.3s ease;
+}
+
+.detail-stat:hover {
+  transform: translateY(-5px);
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.2);
+}
+
+.detail-stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.detail-stat-label {
+  color: #94a3b8;
+  font-size: 0.9rem;
   font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  backdrop-filter: blur(10px);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: #ddd6fe;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
-
-.error-message, .no-data-message {
-  padding: 1.5rem;
-  border-radius: 12px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  backdrop-filter: blur(10px);
-}
-
-.error-message {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.2) 100%);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #fecaca;
-}
-
-.no-data-message {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(30, 64, 175, 0.2) 100%);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  color: #bae6fd;
-}
-
-/* Остальные стили такие же как в вашем оригинальном файле */
-</style>
