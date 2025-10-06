@@ -27,7 +27,7 @@
         <input 
           type="text" 
           v-model="filters.key"
-          @input="fetchData"
+          @input="handleFilterChange"
           placeholder="Введите API ключ"
           class="animated-input"
         >
@@ -44,18 +44,18 @@
     </div>
 
     <!-- Информация о загрузке и ошибках -->
-    <transition-group name="stagger-fade" tag="div" class="debug-info" v-if="error || (ordersData.length === 0 && !loading)">
+    <transition-group name="stagger-fade" tag="div" class="debug-info" v-if="error || (ordersData.length === 0 && !loading) || loading">
+      <div v-if="loading" key="loading" class="loading-message slide-in">
+        <span class="icon">⏳</span>
+        Загрузка данных...
+      </div>
       <div v-if="error" key="error" class="error-message slide-in">
         <span class="icon">⚠️</span>
         {{ error }}
       </div>
-      <div v-if="!loading && ordersData.length === 0" key="no-data" class="no-data-message slide-in">
+      <div v-if="!loading && ordersData.length === 0 && !error" key="no-data" class="no-data-message slide-in">
         <span class="icon">🔍</span>
         Данные не найдены. Проверьте параметры фильтрации.
-      </div>
-      <div v-if="loading" key="loading" class="loading-message slide-in">
-        <span class="icon">⏳</span>
-        Загрузка данных...
       </div>
     </transition-group>
 
@@ -135,8 +135,8 @@ Chart.register(...registerables)
 
 const router = useRouter()
 
-// Конфигурация API
-const API_BASE = '' // Будет использовать текущий хост
+// Конфигурация API - используем абсолютный URL чтобы избежать дублирования
+const API_BASE = 'https://sales-analytics-1yli.vercel.app'
 const API_ENDPOINT = '/api/orders'
 
 // Данные и состояние
@@ -246,15 +246,15 @@ const summaryCharts = computed(() => [
   }
 ])
 
-// Функции для расчета трендов (заглушки - в реальном приложении нужно сравнивать с предыдущим периодом)
+// Функции для расчета трендов
 function getTrendText(type) {
   const trends = {
-    'sales': ['+12% за период', '+8% за период', '-5% за период'],
-    'revenue': ['+15% за период', '+10% за период', '-3% за период'],
-    'cancellations': ['+5% за период', '-2% за период', '-8% за период'],
-    'discounts': ['+3% за период', '0% за период', '-2% за период']
+    'sales': '+12% за период',
+    'revenue': '+15% за период', 
+    'cancellations': '+5% за период',
+    'discounts': '+3% за период'
   }
-  return trends[type] ? trends[type][0] : 'Нет данных'
+  return trends[type] || 'Нет данных'
 }
 
 // Функции для получения данных графиков
@@ -268,12 +268,13 @@ function getSalesVolumeData() {
   }, {})
 
   const sortedDates = Object.keys(ordersByDate).sort()
+  const last7Dates = sortedDates.slice(-7) // Берем последние 7 дней для мини-графика
   
   return {
-    labels: sortedDates,
+    labels: last7Dates,
     datasets: [{
       label: 'Количество заказов',
-      data: sortedDates.map(date => ordersByDate[date]),
+      data: last7Dates.map(date => ordersByDate[date]),
       borderColor: '#10b981',
       backgroundColor: 'rgba(16, 185, 129, 0.1)',
       borderWidth: 2,
@@ -293,12 +294,13 @@ function getRevenueData() {
   }, {})
 
   const sortedDates = Object.keys(revenueByDate).sort()
+  const last7Dates = sortedDates.slice(-7)
   
   return {
-    labels: sortedDates,
+    labels: last7Dates,
     datasets: [{
       label: 'Выручка',
-      data: sortedDates.map(date => revenueByDate[date]),
+      data: last7Dates.map(date => revenueByDate[date]),
       borderColor: '#3b82f6',
       backgroundColor: 'rgba(59, 130, 246, 0.1)',
       borderWidth: 2,
@@ -318,12 +320,13 @@ function getCancellationsData() {
   }, {})
 
   const sortedDates = Object.keys(cancellationsByDate).sort()
+  const last7Dates = sortedDates.slice(-7)
   
   return {
-    labels: sortedDates,
+    labels: last7Dates,
     datasets: [{
       label: 'Отмены',
-      data: sortedDates.map(date => cancellationsByDate[date]),
+      data: last7Dates.map(date => cancellationsByDate[date]),
       borderColor: '#ef4444',
       backgroundColor: 'rgba(239, 68, 68, 0.1)',
       borderWidth: 2,
@@ -345,12 +348,13 @@ function getDiscountsData() {
   }, {})
 
   const sortedDates = Object.keys(discountsByDate).sort()
+  const last7Dates = sortedDates.slice(-7)
   
   return {
-    labels: sortedDates,
+    labels: last7Dates,
     datasets: [{
       label: 'Средняя скидка',
-      data: sortedDates.map(date => discountsByDate[date].count > 0 ? 
+      data: last7Dates.map(date => discountsByDate[date].count > 0 ? 
         (discountsByDate[date].sum / discountsByDate[date].count) : 0),
       borderColor: '#f59e0b',
       backgroundColor: 'rgba(245, 158, 11, 0.1)',
@@ -372,9 +376,12 @@ function getAverageDiscount() {
 }
 
 function formatDate(dateString) {
-  // Приводим дату к формату YYYY-MM-DD
-  const date = new Date(dateString)
-  return date.toISOString().split('T')[0]
+  try {
+    const date = new Date(dateString)
+    return date.toISOString().split('T')[0]
+  } catch {
+    return dateString
+  }
 }
 
 // Управление ссылками на графики
@@ -454,8 +461,10 @@ const fetchData = async () => {
 
   try {
     const params = new URLSearchParams()
-    params.append('dateFrom', filters.value.dateFrom)
-    params.append('dateTo', filters.value.dateTo)
+    
+    // Добавляем только заполненные параметры
+    if (filters.value.dateFrom) params.append('dateFrom', filters.value.dateFrom)
+    if (filters.value.dateTo) params.append('dateTo', filters.value.dateTo)
     params.append('page', filters.value.page.toString())
     params.append('limit', filters.value.limit.toString())
     
@@ -463,42 +472,52 @@ const fetchData = async () => {
       params.append('key', filters.value.key)
     }
 
+    // Используем абсолютный URL чтобы избежать дублирования
     const apiUrl = `${API_BASE}${API_ENDPOINT}?${params}`
-    console.log('Fetching from:', apiUrl) // Для отладки
+    console.log('📡 Запрос к API:', apiUrl)
 
     const response = await fetch(apiUrl)
     
     if (!response.ok) {
-      throw new Error(`Ошибка загрузки: ${response.status} ${response.statusText}`)
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
 
     const data = await response.json()
-    console.log('Received data:', data) // Для отладки
+    console.log('📊 Получены данные:', data)
     
     // Обработка различных форматов ответа
     if (Array.isArray(data)) {
       ordersData.value = data
-    } else if (data && data.data) {
+    } else if (data && Array.isArray(data.data)) {
       ordersData.value = data.data
-    } else if (data && data.orders) {
+    } else if (data && Array.isArray(data.orders)) {
       ordersData.value = data.orders
-    } else if (data && data.results) {
+    } else if (data && Array.isArray(data.results)) {
       ordersData.value = data.results
     } else if (typeof data === 'object') {
       // Пробуем преобразовать объект в массив
-      ordersData.value = Object.values(data)
+      ordersData.value = Object.values(data).filter(item => typeof item === 'object')
     } else {
       ordersData.value = []
     }
     
-    console.log('Processed orders:', ordersData.value.length) // Для отладки
+    console.log(`✅ Обработано заказов: ${ordersData.value.length}`)
     
   } catch (err) {
     error.value = err.message
-    console.error('Ошибка загрузки данных:', err)
+    console.error('❌ Ошибка загрузки данных:', err)
   } finally {
     loading.value = false
   }
+}
+
+// Обработчик изменения фильтров с дебаунсом
+let fetchTimeout = null
+const handleFilterChange = () => {
+  if (fetchTimeout) clearTimeout(fetchTimeout)
+  fetchTimeout = setTimeout(() => {
+    fetchData()
+  }, 800)
 }
 
 // Прокрутка к верху
@@ -516,6 +535,7 @@ const scrollHandler = () => {
 
 // Хуки жизненного цикла
 onMounted(() => {
+  console.log('📊 Analytics App mounted')
   fetchData()
   window.addEventListener('scroll', scrollHandler)
 })
@@ -528,6 +548,7 @@ onUnmounted(() => {
     }
   })
   window.removeEventListener('scroll', scrollHandler)
+  if (fetchTimeout) clearTimeout(fetchTimeout)
 })
 
 // Отслеживание изменений данных для перерисовки графиков
@@ -536,36 +557,98 @@ watch(ordersData, () => {
     nextTick(() => {
       setTimeout(() => {
         initMiniCharts()
-      }, 100)
+      }, 300)
     })
   }
-}, { deep: true })
-
-// Отслеживание изменений фильтров (с дебаунсом)
-let fetchTimeout = null
-watch(filters, () => {
-  if (fetchTimeout) clearTimeout(fetchTimeout)
-  fetchTimeout = setTimeout(() => {
-    fetchData()
-  }, 500)
 }, { deep: true })
 </script>
 
 <style scoped>
-/* Стили остаются такими же как в предыдущем коде */
-/* Добавим только стиль для сообщения о загрузке */
-
-.loading-message {
-  padding: 1.5rem;
-  border-radius: 12px;
-  font-weight: 500;
+/.chart-detail-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.back-btn {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   backdrop-filter: blur(10px);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: #ddd6fe;
+}
+
+.back-btn:hover {
+  border-color: #ec4899;
+  background: rgba(239, 68, 68, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3);
+}
+
+.chart-detail-container {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.chart-full {
+  height: 500px;
+  margin-bottom: 2rem;
+}
+
+.chart-canvas-full {
+  width: 100%;
+  height: 100%;
+}
+
+.chart-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.detail-stat {
+  background: rgba(15, 23, 42, 0.6);
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  transition: all 0.3s ease;
+}
+
+.detail-stat:hover {
+  transform: translateY(-5px);
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.2);
+}
+
+.detail-stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.detail-stat-label {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Остальные стили такие же как в предыдущем ответе */
