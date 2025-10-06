@@ -10,9 +10,9 @@ const routes = [
     component: Dashboard
   },
   {
-    path: '/analytics', // Добавьте этот маршрут
-    name: 'Analytics',
-    component: Analytics
+    path: '/analytics',
+    name: 'Analytics', 
+    component: () => import('../components/Analytics.vue') // путь к вашему компоненту
   },
   {
     path: '/metric/:metric',
