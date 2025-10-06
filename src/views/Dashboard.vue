@@ -127,6 +127,32 @@
       </div>
     </transition>
 
+    <!-- Пагинация -->
+    <transition name="pagination-slide">
+      <div v-if="pagination && ordersData.length > 0" class="pagination">
+        <button 
+          @click="handlePageChange(pagination.current_page - 1)"
+          :disabled="pagination.current_page <= 1"
+          class="pagination-btn"
+        >
+          ← Назад
+        </button>
+        
+        <span class="pagination-info">
+          Страница {{ pagination.current_page }} из {{ pagination.last_page }}
+          (всего: {{ pagination.total }} заказов)
+        </span>
+        
+        <button 
+          @click="handlePageChange(pagination.current_page + 1)"
+          :disabled="pagination.current_page >= pagination.last_page"
+          class="pagination-btn"
+        >
+          Вперед →
+        </button>
+      </div>
+    </transition>
+
     <!-- Кнопка возврата наверх -->
     <transition name="zoom">
       <button 
@@ -157,10 +183,10 @@ Chart.register(...registerables)
 
 const router = useRouter()
 
-// Конфигурация API с прокси
-const API_BASE = '' // Используем тот же хост
+// Конфигурация API
+const API_BASE = ''
 const API_ENDPOINT = '/api/proxy'
-const API_KEY = 'E6kUTYrYwZq2tN4QEtyzsbEBk3ie' // Ваш ключ
+const API_KEY = 'E6kUTYrYwZq2tN4QEtyzsbEBk3ie'
 
 // Данные и состояние
 const ordersData = ref([])
@@ -169,6 +195,7 @@ const error = ref(null)
 const showFab = ref(false)
 const chartLoading = ref(false)
 const chartInstances = ref({})
+const pagination = ref(null)
 
 const filters = ref({
   dateFrom: getDefaultDateFrom(),
@@ -193,7 +220,7 @@ function getDefaultDateTo() {
 const computedStats = computed(() => [
   {
     value: ordersData.value.length.toLocaleString(),
-    label: 'Всего заказов',
+    label: 'Загружено заказов',
     icon: '📦'
   },
   {
@@ -218,11 +245,11 @@ const totalOrdersValue = computed(() => {
 })
 
 const activeOrders = computed(() => {
-  return ordersData.value.filter(item => !item.is_cancel || item.is_cancel === false).length
+  return ordersData.value.filter(item => !item.is_cancel).length
 })
 
 const canceledOrders = computed(() => {
-  return ordersData.value.filter(item => item.is_cancel === true || item.is_cancel === 'true').length
+  return ordersData.value.filter(item => item.is_cancel).length
 })
 
 const chartStats = computed(() => [
@@ -231,7 +258,7 @@ const chartStats = computed(() => [
     value: Math.round(totalOrdersValue.value).toLocaleString() + ' ₽'
   },
   {
-    label: 'Активных заказов:',
+    label: 'Активных:',
     value: activeOrders.value + ' шт.'
   },
   {
@@ -364,7 +391,7 @@ function getRevenueData() {
 
 function getCancellationsData() {
   const cancellationsByDate = ordersData.value.reduce((acc, item) => {
-    if (item.date && (item.is_cancel === true || item.is_cancel === 'true')) {
+    if (item.date && item.is_cancel) {
       const date = formatDate(item.date)
       acc[date] = (acc[date] || 0) + 1
     }
@@ -540,7 +567,6 @@ const initMiniCharts = async () => {
       }
     })
     
-    // Сохраняем ссылку на экземпляр chart
     canvas._chart = chartInstance
   })
 
@@ -565,18 +591,12 @@ const fetchData = async () => {
   try {
     const params = new URLSearchParams()
     
-    // Параметры для прокси
     params.append('endpoint', 'orders')
     params.append('key', API_KEY)
     params.append('limit', filters.value.limit.toString())
     params.append('page', filters.value.page.toString())
-    
-    if (filters.value.dateFrom) {
-      params.append('dateFrom', filters.value.dateFrom)
-    }
-    if (filters.value.dateTo) {
-      params.append('dateTo', filters.value.dateTo)
-    }
+    params.append('dateFrom', filters.value.dateFrom)
+    params.append('dateTo', filters.value.dateTo)
 
     const apiUrl = `${API_BASE}${API_ENDPOINT}?${params}`
     console.log('📡 Запрос к прокси:', apiUrl)
@@ -587,31 +607,37 @@ const fetchData = async () => {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     }
 
-    const data = await response.json()
-    console.log('📊 Получены данные:', data)
+    const result = await response.json()
+    console.log('📊 Получены реальные данные:', result)
     
-    // Обработка различных форматов ответа
-    if (Array.isArray(data)) {
-      ordersData.value = data
-    } else if (data && Array.isArray(data.data)) {
-      ordersData.value = data.data
-    } else if (data && Array.isArray(data.orders)) {
-      ordersData.value = data.orders
-    } else if (data && Array.isArray(data.results)) {
-      ordersData.value = data.results
-    } else if (typeof data === 'object') {
-      ordersData.value = Object.values(data).filter(item => typeof item === 'object')
+    // Обработка структуры ответа
+    if (result && Array.isArray(result.data)) {
+      ordersData.value = result.data
+      console.log(`✅ Загружено заказов: ${ordersData.value.length}`)
+      
+      // Сохраняем пагинацию
+      if (result.meta) {
+        pagination.value = result.meta
+      }
+      
     } else {
       ordersData.value = []
+      console.warn('⚠️ Нет данных в ответе')
     }
     
-    console.log(`✅ Обработано заказов: ${ordersData.value.length}`)
-    
   } catch (err) {
-    error.value = err.message
-    console.error('❌ Ошибка загрузки данных:', err)
+    error.value = `Ошибка загрузки: ${err.message}`
+    console.error('❌ Ошибка:', err)
   } finally {
     loading.value = false
+  }
+}
+
+// Обработчик смены страницы
+const handlePageChange = (newPage) => {
+  if (newPage >= 1 && newPage <= pagination.value.last_page) {
+    filters.value.page = newPage
+    fetchData()
   }
 }
 
@@ -1180,6 +1206,47 @@ watch(ordersData, () => {
   font-family: 'JetBrains Mono', monospace;
 }
 
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border-radius: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.pagination-btn {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  color: #e2e8f0;
+  backdrop-filter: blur(10px);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: #ec4899;
+  background: rgba(239, 68, 68, 0.2);
+  transform: translateY(-2px);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
 .debug-info {
   margin: 1rem 0;
 }
@@ -1389,6 +1456,21 @@ watch(ordersData, () => {
   transform: scale(1.1) translateY(-20px);
 }
 
+.pagination-slide-enter-active,
+.pagination-slide-leave-active {
+  transition: all 0.4s ease;
+}
+
+.pagination-slide-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.pagination-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
 .zoom-enter-active,
 .zoom-leave-active {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1435,6 +1517,11 @@ watch(ordersData, () => {
   
   .filter-group {
     min-width: 100%;
+  }
+  
+  .pagination {
+    flex-direction: column;
+    gap: 1rem;
   }
   
   .fab {
